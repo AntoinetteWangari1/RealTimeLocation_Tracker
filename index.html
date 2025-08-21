@@ -56,7 +56,10 @@
   <div class="tracking-controls">
     <button id="startBtn">Start Tracking</button>
     <button id="stopBtn" disabled>Stop Tracking</button>
+    <button onclick="simulateRoute()">Simulate Route</button>
+
   </div>
+
 
   <script>
     // Initialize map
@@ -107,6 +110,18 @@
     let marker = null;
     let route = [];
     let watchId = null;
+
+    function simulateRoute() {
+    route = [
+      [-1.1576091641324253, 36.999172736863606],
+      [-1.1550240418910707, 37.002755465738225]
+      // [-1.3043, 36.8279],
+      // [-1.3043, 36.8179]
+    ];
+    polyline.setLatLngs(route);
+    alert("Simulated route ready. Click Stop Tracking to save GeoJSON.");
+  }
+
 
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
@@ -160,8 +175,8 @@
             coordinates: [polygonCoords.map(coord => [coord[1], coord[0]])]
           }
         };
-        const blob = new lob([JSON.stringify(geojsonFeature, null, 2)],{type: "aplication/json"});
-        const url = URL.createObjectUrl(blob);
+        const blob = new Blob([JSON.stringify(geojsonFeature, null, 2)],{type: "application/json"});
+        const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = "route_polygon.geojson";
@@ -170,6 +185,12 @@
 
         //show polygon on the map
         L.polygon(route,{color:'red', fillOpacity: 0.3}).addTo(map);
+        //Also show the actual GeoJSON (double confirmation)
+        L.geoJSON(geojsonFeature, {
+          style: { color: "green", weight: 2, fillOpacity: 0.2 }
+        }).addTo(map);
+      
+
       }
       startBtn.disabled = false;
       stopBtn.disabled = true;
