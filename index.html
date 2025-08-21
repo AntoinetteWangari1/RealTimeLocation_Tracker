@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FarmSawa - Realtime Tracking</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.0/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css"/>
+  <link rel="stylesheet" href="plugins/minimap/Control.MiniMap.min.css">
+
+  <!-- Leaflet JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.0/leaflet.js"></script>
+  <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.js"></script>
+  <script src="plugins/minimap/Control.MiniMap.min.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+    .tracking-controls {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      display: flex;
+      gap: 10px;
+    }
+    .tracking-controls button {
+      padding: 8px 14px;
+      font-size: 14px;
+      border: none;
+      border-radius: 8px;
+      background: #27ae60;
+      color: white;
+      cursor: pointer;
+    }
+    .tracking-controls button:disabled {
+      background: #95a5a6;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Tracking controls -->
+  <div class="tracking-controls">
+    <button id="startBtn">Start Tracking</button>
+    <button id="stopBtn" disabled>Stop Tracking</button>
+  </div>
+
+  <script>
+    // Initialize map
+    var map = L.map('map', {
+      center: [-1.2943, 36.8179],
+      zoom: 12,
+      attributionControl: false,
+      zoomControl: true
+    });
+
+    // Basemaps
+    var OpenStreetMap = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png?', { maxZoom: 23 }).addTo(map);
+    var Esri_WorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 23
+    });
+    var GoogleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      maxZoom: 23,
+      subdomains: ['mt0','mt1','mt2','mt3']
+    });
+
+    // Layer control
+    var baseLayers = {
+      "Google Streets": GoogleStreets,
+      "OpenStreetMap": OpenStreetMap,
+      "Esri World Imagery": Esri_WorldImagery
+    };
+    L.control.layers(baseLayers, null).addTo(map);
+
+    // Minimap
+    // var minimap = new L.Control.MiniMap(OpenStreetMap).addTo(map);
+
+    // Geoman drawing tools
+    map.pm.addControls({
+      position: 'topleft',
+      drawCircleMarker: true,
+      drawCircle: false,
+      rotateMode: false,
+      drawRectangle: true,
+      drawPolygon: true,
+      editMode: true,
+      dragMode: true,
+      cutPolygon: false,
+      removalMode: true
+    });
+
+    // === Realtime tracking logic ===
+    let polyline = L.polyline([], { color: 'blue', weight: 4 }).addTo(map);
+    let marker = null;
+    let route = [];
+    let watchId = null;
+
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+
+    startBtn.onclick = () => {
+      route = [];
+      polyline.setLatLngs([]);
+
+      if ('geolocation' in navigator) {
+        watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            const latlng = [latitude, longitude];
+            map.setView(latlng, 18);
+
+            if (!marker) {
+              marker = L.marker(latlng).addTo(map);
+            } else {
+              marker.setLatLng(latlng);
+            }
+
+            route.push(latlng);
+            polyline.setLatLngs(route);
+          },
+          (err) => alert("Location error: " + err.message),
+          { enableHighAccuracy: true }
+        );
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      }
+    };
+
+    stopBtn.onclick = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+
+      if (route.length>2){
+        //Close the polygon
+        const polygonCoords = [...route, route[0]];
+        const geojsonFeature = {
+          type: "Feature",
+          properties: {
+            name: "Tracked Route Area",
+            timestamp: new Date().toISOString()
+          },
+          geometry:{
+            type: "Polygon",
+            coordinates: [polygonCoords.map(coord => [coord[1], coord[0]])]
+          }
+        };
+        const blob = new lob([JSON.stringify(geojsonFeature, null, 2)],{type: "aplication/json"});
+        const url = URL.createObjectUrl(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "route_polygon.geojson";
+        a.click();
+        URL.revokeObjectURL(url);
+
+        //show polygon on the map
+        L.polygon(route,{color:'red', fillOpacity: 0.3}).addTo(map);
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    };
+
+    // Fix resize bug
+    window.addEventListener('load', () => {
+      setTimeout(() => map.invalidateSize(), 200);
+    });
+  </script>
+</body>
+</html>
